@@ -1,0 +1,73 @@
+version: '3.9'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: ./deploy/Dockerfile
+      target: prod
+    image: chat:${CHAT_VERSION:-latest}
+    restart: always
+    env_file:
+    - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      CHAT_HOST: 0.0.0.0
+      CHAT_DB_HOST: chat-db
+      CHAT_DB_PORT: 5432
+      CHAT_DB_USER: chat
+      CHAT_DB_PASS: chat
+      CHAT_DB_BASE: chat
+      CHAT_REDIS_HOST: chat-redis
+
+  db:
+    image: postgres:13.8-bullseye
+    hostname: chat-db
+    environment:
+      POSTGRES_PASSWORD: "chat"
+      POSTGRES_USER: "chat"
+      POSTGRES_DB: "chat"
+    volumes:
+    - chat-db-data:/var/lib/postgresql/data
+    restart: always
+    healthcheck:
+      test: pg_isready -U chat
+      interval: 2s
+      timeout: 3s
+      retries: 40
+
+  migrator:
+    image: chat:${CHAT_VERSION:-latest}
+    restart: "no"
+    command: alembic upgrade head
+    environment:
+      CHAT_DB_HOST: chat-db
+      CHAT_DB_PORT: 5432
+      CHAT_DB_USER: chat
+      CHAT_DB_PASS: chat
+      CHAT_DB_BASE: chat
+    depends_on:
+      db:
+        condition: service_healthy
+
+  redis:
+    image: bitnami/redis:6.2.5
+    hostname: "chat-redis"
+    restart: always
+    environment:
+      ALLOW_EMPTY_PASSWORD: "yes"
+    healthcheck:
+      test: redis-cli ping
+      interval: 1s
+      timeout: 3s
+      retries: 50
+
+
+
+volumes:
+  chat-db-data:
+    name: chat-db-data
